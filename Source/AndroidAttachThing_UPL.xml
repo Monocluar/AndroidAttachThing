@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--AndroidAttachThing plugin additions-->
+<root xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- init section is always evaluated once per architecture -->
+	<init>
+    <log text="[AndroidAttachThing] AndroidAttachThing initialization!"/>
+
+    <setStringReplace result="DefaultDir" source="$S(PluginDir)" find="/Source/AndroidAttachThing" with="/Resources" />
+    <setStringFromProperty result="DrawablePathToEdit" ini="Engine" section="/Script/AndroidAttachThing.AndroidAttachThingSetting" property="AndroidDrawablesFolder" default="$S(DefaultDir)"/>
+    <setStringReplace result="HalfwayEditedDrawablePath" source="$S(DrawablePathToEdit)" find="(Path=&quot;" with=""/>
+    <setStringReplace result="DrawableDir" source="$S(HalfwayEditedDrawablePath)" find="&quot;)" with=""/>
+  
+    <!-- Permissions -->
+    <setBoolFromProperty result="WriteCalendarPermission" ini="Engine" section="/Script/AndroidAttachThing.AndroidAttachThingSetting" property="bWriteCalendarPermission" default="false"/>
+    <setBoolFromProperty result="ReadCalendarPermission" ini="Engine" section="/Script/AndroidAttachThing.AndroidAttachThingSetting" property="bReadCalendarPermission" default="false"/>
+    
+    <setIntFromProperty result = "TargetSDKVer" ini="Engine" section="/Script/AndroidRuntimeSettings.AndroidRuntimeSettings" property="TargetSDKVersion"/>
+    <setBoolIsGreater result="AddRequestLegacyExternalStorageTagToManifest" arg1="$I(TargetSDKVer)" arg2="28"/>
+  
+    <!-- Debugging logs -->
+    <log text="[AndroidAttachThing] Directory with drawables is: $S(DrawableDir)"/>
+    <log text="[AndroidAttachThing] Permissions include list:"/>>
+    <log text="[AndroidAttachThing] Write Calendar: $B(WriteCalendarPermission)"/>
+    <log text="[AndroidAttachThing] Read Calendar: $B(ReadCalendarPermission)"/>
+  
+    <log text="[AndroidAttachThing] Target Android SDK is: $I(TargetSDKVer)"/>
+  </init>
+
+  <prebuildCopies>
+    <copyDir src="$S(PluginDir)/Private/Java" dst="$S(BuildDir)/src/com/Monocular/AndroidAttachThing" />
+    <copyDir src="$S(PluginDir)/Private/Xml" dst="$S(BuildDir)/res/xml" />
+    <copyDir src="$S(DrawableDir)" dst="$S(BuildDir)/res/drawable" />
+  </prebuildCopies>
+
+  <gradleProperties>
+    <insert>
+    android.useAndroidX=true
+    android.enableJetifier=true
+    </insert>
+  </gradleProperties>
+  
+  <!-- optional additions to proguard -->
+  <proguardAdditions>
+    <insert>
+      -dontwarn com.Monocular.**
+      -keep class com.Monocular.** { *; }
+      -keep interface com.Monocular.** { *; }
+
+      -dontwarn androidx.**
+      -keep class androidx.** { *; }
+      -keep interface androidx.** { *; }
+
+      <!-- Suppresses shipping build proguard warnings which fail the packaging -->
+      -dontwarn java.lang.**
+      -dontwarn javax.lang.**
+      -dontwarn com.google.**
+    </insert>
+  </proguardAdditions>
+  
+  <!-- optional updates applied to AndroidManifest.xml -->
+  <androidManifestUpdates>
+    <if condition="WriteCalendarPermission">
+      <true>
+        <addPermission android:name="android.permission.WRITE_CALENDAR"/>
+      </true>
+    </if>
+    <if condition="ReadCalendarPermission">
+      <true>
+        <addPermission android:name="android.permission.READ_CALENDAR"/>
+      </true>
+    </if>
+    
+    <if condition="AddRequestLegacyExternalStorageTagToManifest">
+      <true>
+        <log text="[AndroidAttachThing] Adding requestLegacyExternalStorage tag to Manifest..."/>
+        <addAttribute tag="application" name="android:requestLegacyExternalStorage" value="true"/>
+      </true>
+    </if>
+    
+    <setStringFromAttribute result="PackageName" tag="manifest" name="package"/>
+    <setElement result="AATProvider" value="provider" />
+    <addAttribute tag="$AATProvider" name="android:name" value="com.Monocular.AndroidAttachThing.AATFileProvider" />
+    <addAttribute tag="$AATProvider" name="android:authorities" value="$S(PackageName).AATFileProvider" />
+    <addAttribute tag="$AATProvider" name="android:exported" value="false" />
+    <addAttribute tag="$AATProvider" name="android:grantUriPermissions" value="true" />
+    
+    <setElement result="AuthActivityElement" value="activity"/>
+    <addAttribute tag="$AuthActivityElement" name="android:name" value="android.support.FILE_PROVIDER_PATHS" />
+    <addAttribute tag="$AuthActivityElement" name="android:resource" value="@xml/provider_paths" />
+    <addElement tag="$AATProvider" name="AuthActivityElement" />
+    
+    <addElement tag="application" name="AATProvider" />
+    
+  </androidManifestUpdates>
+  
+  <buildGradleAdditions>
+    <insert>
+      dependencies {
+        implementation 'com.google.android.play:core:1.8.0'
+        implementation 'com.google.guava:guava:28.2-android'
+      }
+    </insert>
+  </buildGradleAdditions>
+  
+  <baseBuildGradleAdditions>
+    <insert>
+      allprojects {
+        def mappings = [
+          'android.support.annotation': 'androidx.annotation',
+          'android.arch.lifecycle': 'androidx.lifecycle',
+          'android.support.v4.app.NotificationCompat': 'androidx.core.app.NotificationCompat',
+          'android.support.v4.app.ActivityCompat': 'androidx.core.app.ActivityCompat',
+          'android.support.v4.content.ContextCompat': 'androidx.core.content.ContextCompat',
+          'android.support.v4.app.NotificationManagerCompat': 'androidx.core.app.NotificationManagerCompat',
+          'android.support.v4.content.FileProvider': 'androidx.core.content.FileProvider',
+          'android.support.v13.app.FragmentCompat': 'androidx.legacy.app.FragmentCompat',
+          'android.arch.lifecycle.Lifecycle': 'androidx.lifecycle.Lifecycle',
+          'android.arch.lifecycle.LifecycleObserver': 'androidx.lifecycle.LifecycleObserver',
+          'android.arch.lifecycle.OnLifecycleEvent': 'androidx.lifecycle.OnLifecycleEvent',
+          'android.arch.lifecycle.ProcessLifecycleOwner': 'androidx.lifecycle.ProcessLifecycleOwner',
+        ]
+
+        beforeEvaluate { project ->
+          project.rootProject.projectDir.traverse(type: groovy.io.FileType.FILES, nameFilter: ~/.*\.java$/) { f ->
+            mappings.each { entry ->
+              if (f.getText('UTF-8').contains(entry.key)) {
+                println "Updating ${entry.key} to ${entry.value} in file ${f}"
+                ant.replace(file: f, token: entry.key, value: entry.value)
+              }
+            }
+          }
+        }
+      }
+    </insert>
+  </baseBuildGradleAdditions>
+
+</root>
